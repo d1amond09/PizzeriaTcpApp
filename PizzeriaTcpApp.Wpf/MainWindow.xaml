@@ -1,0 +1,58 @@
+﻿<Window x:Class="PizzeriaTcpApp.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PizzeriaTcpApp.Wpf"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <Grid Margin="15">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="2*"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.Column="0">
+            <Label Content="Меню пиццерии" DockPanel.Dock="Top" FontWeight="Bold"/>
+            <Button Content="Обновить список" DockPanel.Dock="Bottom" Click="RefreshButton_Click" Margin="0,10,0,0"/>
+            <ListBox x:Name="PizzasListBox" 
+                     SelectionChanged="PizzasListBox_SelectionChanged" 
+                     DisplayMemberPath="Name"/>
+        </DockPanel>
+
+        <Border Grid.Column="1" Margin="20,0,0,0" BorderBrush="Gainsboro" BorderThickness="1" Padding="10">
+            <StackPanel x:Name="DetailsPanel" IsEnabled="False">
+                <Label Content="Детали пиццы" FontWeight="Bold"/>
+
+                <Label Content="ID"/>
+                <TextBox x:Name="IdTextBox" IsReadOnly="True" Background="#eee"/>
+
+                <Label Content="Название"/>
+                <TextBox x:Name="NameTextBox"/>
+
+                <Label Content="Ингредиенты"/>
+                <ListBox x:Name="IngredientsListBox" Height="100" Margin="0,0,0,5"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="NewIngredientTextBox" Grid.Column="0" VerticalContentAlignment="Center"/>
+                    <Button x:Name="AddIngredientButton" Grid.Column="1" Content="Добавить" Margin="5,0,0,0" Click="AddIngredientButton_Click"/>
+                    <Button x:Name="RemoveIngredientButton" Grid.Column="2" Content="Удалить" Margin="5,0,0,0" Click="RemoveIngredientButton_Click"/>
+                </Grid>
+
+                <Label Content="Цена"/>
+                <TextBox x:Name="PriceTextBox"/>
+
+                <WrapPanel Margin="0,25,0,0" HorizontalAlignment="Right">
+                    <Button Content="Добавить новую" Click="AddButton_Click" Width="120" Margin="5"/>
+                    <Button Content="Сохранить изменения" Click="UpdateButton_Click" Width="140" Margin="5"/>
+                    <Button Content="Удалить" Click="DeleteButton_Click" Width="80" Margin="5" Background="#FFE08282"/>
+                    <Button Content="Очистить" Click="ClearButton_Click" Width="80" Margin="5"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
