@@ -11,27 +11,27 @@ public class ServerHelper
 {
 	private static readonly IPizzasService _pizzaService = new PizzasService();
 
-	public static void HandleClient(TcpClient client)
+	public static async Task HandleClient(TcpClient client)
 	{
-		Console.WriteLine("New connection!");
-		using var stream = client.GetStream();
-		using var reader = new StreamReader(stream, Encoding.UTF8);
-		using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+		Console.WriteLine("Новое подключение к MenuService!");
+		await using var stream = client.GetStream();
+		using var reader = new StreamReader(stream, leaveOpen: true);
+		await using var writer = new StreamWriter(stream) { AutoFlush = true };
+
 		try
 		{
-			// 1. Читаем стартовую строку
-			var requestLine = reader.ReadLine();
+			var requestLine = await reader.ReadLineAsync();
 			if (string.IsNullOrEmpty(requestLine)) return;
+
 			Console.WriteLine(requestLine);
 
 			var parts = requestLine.Split(' ');
 			var method = parts[0];
 			var path = parts[1];
 
-			// 2. Читаем все заголовки
 			var headers = new Dictionary<string, string>();
 			string line;
-			while (!string.IsNullOrEmpty(line = reader.ReadLine()))
+			while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync()))
 			{
 				var headerParts = line.Split(':', 2);
 				if (headerParts.Length == 2)
@@ -40,85 +40,108 @@ public class ServerHelper
 				}
 			}
 
-			// 3. Читаем тело, если есть Content-Length
 			string body = null;
 			if (headers.TryGetValue("Content-Length", out var contentLengthValue))
 			{
-				if (int.TryParse(contentLengthValue, out var contentLength))
+				if (int.TryParse(contentLengthValue, out var contentLength) && contentLength > 0)
 				{
 					var buffer = new char[contentLength];
-					reader.ReadBlock(buffer, 0, contentLength);
+					await reader.ReadBlockAsync(buffer, 0, contentLength);
 					body = new string(buffer);
 				}
 			}
 
 			string response;
-
-
-			if (method == "GET" && path == "/pizzas")
+			string api = "/api/menu";
+			if (method == "GET" && path == $"{api}/pizzas")
 			{
 				var allPizzas = _pizzaService.GetAllPizzas();
+				Console.WriteLine(string.Join(',', allPizzas.Select(x => x.Name)));
 				response = CreateResponse("200 OK", allPizzas);
 			}
-			else if (method == "GET" && path.StartsWith("/pizzas/"))
+			else if (method == "GET" && path.StartsWith($"{api}/pizzas/"))
 			{
-				var id = Guid.Parse(path.Split('/')[2]);
-				var pizza = _pizzaService.GetPizzaById(id);
-				response = pizza != null ? CreateResponse("200 OK", pizza) : CreateResponse("404 Not Found");
-			}
-			else if (method == "POST" && path == "/pizzas")
-			{
-				var pizzaDto = JsonSerializer.Deserialize<Pizza>(body); 
-				var createdPizza = _pizzaService.CreatePizza(pizzaDto);
-				Console.WriteLine($"Добавлена пицца: {createdPizza.Name}");
-				response = CreateResponse("201 Created", createdPizza);
-			}
-			else if (method == "PUT" && path.StartsWith("/pizzas/"))
-			{
-				var id = Guid.Parse(path.Split('/')[2]);
-				var pizzaDto = JsonSerializer.Deserialize<Pizza>(body);
-				var updatedPizza = _pizzaService.UpdatePizza(id, pizzaDto);
-				if (updatedPizza != null)
+				var idStr = path.Substring("/api/menu/pizzas/".Length);
+				if (Guid.TryParse(idStr, out Guid id))
 				{
-					Console.WriteLine($"Обновлена пицца ID: {id}");
-					response = CreateResponse("200 OK", updatedPizza);
+					var pizza = _pizzaService.GetPizzaById(id);
+					response = pizza != null
+						? CreateResponse("200 OK", pizza)
+						: CreateResponse("404 Not Found", new { error = $"Pizza with id={id} not found." });
 				}
 				else
 				{
-					response = CreateResponse("404 Not Found");
+					response = CreateResponse("400 Bad Request", new { error = "Invalid pizza id format." });
 				}
 			}
-			else if (method == "DELETE" && path.StartsWith("/pizzas/"))
+			else if (method == "POST" && path == $"{api}/pizzas")
 			{
-				var id = Guid.Parse(path.Split('/')[2]);
-				var success = _pizzaService.DeletePizza(id);
-				if (success)
+				if (body == null)
 				{
-					Console.WriteLine($"Удалена пицца ID: {id}");
-					response = CreateResponse("204 No Content");
+					response = CreateResponse("400 Bad Request", new { error = "Request body is missing for POST." });
 				}
 				else
 				{
-					response = CreateResponse("404 Not Found");
+					try
+					{
+						var newPizza = JsonSerializer.Deserialize<Pizza>(body);
+						var createdPizza = _pizzaService.CreatePizza(newPizza);
+						Console.WriteLine($"Добавлена пицца: {createdPizza.Name}");
+						response = CreateResponse("201 Created", createdPizza);
+					}
+					catch (JsonException ex)
+					{
+						response = CreateResponse("400 Bad Request", new { error = $"Invalid JSON format: {ex.Message}" });
+					}
+				}
+			}
+			else if (method == "PUT" && path.StartsWith("/api/menu/pizzas/"))
+			{
+				var idStr = path.Substring("/api/menu/pizzas/".Length);
+				if (Guid.TryParse(idStr, out Guid id) && body != null)
+				{
+					var updatedPizzaData = JsonSerializer.Deserialize<Pizza>(body);
+					var result = _pizzaService.UpdatePizza(id, updatedPizzaData);
+					response = result != null
+						? CreateResponse("200 OK", result)
+						: CreateResponse("404 Not Found", new { error = "Pizza not found for update." });
+				}
+				else
+				{
+					response = CreateResponse("400 Bad Request", new { error = "Invalid ID or missing body." });
+				}
+			}
+			else if (method == "DELETE" && path.StartsWith("/api/menu/pizzas/"))
+			{
+				var idStr = path.Substring("/api/menu/pizzas/".Length);
+				if (Guid.TryParse(idStr, out Guid id))
+				{
+					var success = _pizzaService.DeletePizza(id);
+					response = success
+						? CreateResponse("204 No Content", "") 
+						: CreateResponse("404 Not Found", new { error = "Pizza not found for deletion." });
+				}
+				else
+				{
+					response = CreateResponse("400 Bad Request", new { error = "Invalid ID format." });
 				}
 			}
 			else
 			{
-				response = CreateResponse("400 Bad Request");
+				response = CreateResponse("404 Not Found", new { error = "Endpoint not found in MenuService." });
 			}
 
-			writer.Write(response);
+			await writer.WriteAsync(response);
+			Console.WriteLine(response);
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"Ошибка: {ex.Message}");
-			var errorResponse = CreateResponse("500 Internal Server Error");
-			writer.Write(errorResponse);
+			Console.WriteLine($"[MenuService] Критическая ошибка: {ex.Message}");
 		}
 		finally
 		{
 			client.Close();
-			Console.WriteLine("Соединение закрыто.");
+			Console.WriteLine("Соединение с MenuService закрыто.");
 		}
 	}
 

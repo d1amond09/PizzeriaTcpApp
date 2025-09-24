@@ -14,7 +14,13 @@ public static class ServerHelper
 {
 	private static readonly IOrderDbService _orderDbService = new OrderDbService();
 
-	public static async void HandleClient(TcpClient client, string menuServiceHost, int menuServicePort)
+	private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+	{
+		ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+		Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+	};
+
+	public static async void HandleClient(TcpClient client, string apiServiceHost, int apiServicePort)
 	{
 		Console.WriteLine("Новое подключение к OrderService!");
 		using (var stream = client.GetStream())
@@ -54,14 +60,60 @@ public static class ServerHelper
 
 				string response;
 
-				if (method == "GET" && path == "/orders")
+				if (method == "GET" && path == "/api/orders")
 				{
 					var orders = _orderDbService.GetAllOrders();
 					response = CreateResponse("200 OK", orders);
 				}
-				else if (method == "POST" && path == "/orders")
+				else if (method == "GET" && path.StartsWith("/api/orders/"))
 				{
-					response = await HandleCreateOrder(body, menuServiceHost, menuServicePort);
+					var idStr = path.Substring("/api/orders/".Length);
+					if (Guid.TryParse(idStr, out Guid id))
+					{
+						var order = _orderDbService.GetOrderById(id);
+						response = order != null
+							? CreateResponse("200 OK", order)
+							: CreateResponse("404 Not Found", new { error = "Order not found." });
+					}
+					else
+					{
+						response = CreateResponse("400 Bad Request", new { error = "Invalid ID format." });
+					}
+				}
+				else if (method == "POST" && path == "/api/orders")
+				{
+					response = await HandleCreateOrder(body, apiServiceHost, apiServicePort);
+				}
+				else if (method == "PUT" && path.StartsWith("/api/orders/"))
+				{
+					var idStr = path.Substring("/api/orders/".Length);
+					if (Guid.TryParse(idStr, out Guid id) && body != null)
+					{
+						var updatedOrderData = JsonSerializer.Deserialize<Order>(body, _jsonOptions);
+						var result = _orderDbService.UpdateOrder(id, updatedOrderData);
+						response = result != null
+							? CreateResponse("200 OK", result)
+							: CreateResponse("404 Not Found", new { error = "Order not found for update." });
+					}
+					else
+					{
+						response = CreateResponse("400 Bad Request", new { error = "Invalid ID or missing body." });
+					}
+				}
+				else if (method == "DELETE" && path.StartsWith("/api/orders/"))
+				{
+					var idStr = path.Substring("/api/orders/".Length);
+					if (Guid.TryParse(idStr, out Guid id))
+					{
+						var success = _orderDbService.DeleteOrder(id);
+						response = success
+							? CreateResponse("204 No Content", "")
+							: CreateResponse("404 Not Found", new { error = "Order not found for deletion." });
+					}
+					else
+					{
+						response = CreateResponse("400 Bad Request", new { error = "Invalid ID format." });
+					}
 				}
 				else
 				{
@@ -84,18 +136,19 @@ public static class ServerHelper
 		}
 	}
 
-	private static async Task<string> HandleCreateOrder(string body, string menuServiceHost, int menuServicePort)
+	private static async Task<string> HandleCreateOrder(string body, string apiServiceHost, int apiServicePort)
 	{
 		try
 		{
 			var requestDto = JsonSerializer.Deserialize<CreateOrderRequest>(body);
-			var menuClient = new RestOverTcpClient(menuServiceHost, menuServicePort);
+			var menuClient = new RestOverTcpClient(apiServiceHost, apiServicePort);
 
 			var newOrder = new Order
 			{
+				Id = Guid.NewGuid(),
 				CustomerName = requestDto.CustomerName,
 				OrderDate = DateTime.UtcNow,
-				Status = "Принят" // Начальный статус
+				Status = "Принят" 
 			};
 
 			foreach (var itemDto in requestDto.Items)
@@ -103,7 +156,7 @@ public static class ServerHelper
 				PizzaDto pizza;
 				try
 				{
-					pizza = await menuClient.GetAsync<PizzaDto>($"/pizzas/{itemDto.PizzaId}");
+					pizza = await menuClient.GetAsync<PizzaDto>($"/api/menu/pizzas/{itemDto.PizzaId}");
 				}
 				catch (ApiException ex)
 				{
@@ -113,6 +166,7 @@ public static class ServerHelper
 
 				var orderItem = new OrderItem
 				{
+					Id = Guid.NewGuid(),
 					PizzaId = pizza.Id,
 					PizzaName = pizza.Name,
 					Quantity = itemDto.Quantity,

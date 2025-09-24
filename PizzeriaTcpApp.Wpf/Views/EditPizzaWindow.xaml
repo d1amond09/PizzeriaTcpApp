@@ -1,0 +1,43 @@
+﻿<Window x:Class="PizzeriaTcpApp.Wpf.Views.EditPizzaWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PizzeriaTcpApp.Wpf.Views"
+        xmlns:converters="clr-namespace:PizzeriaTcpApp.Wpf.Converters"
+        mc:Ignorable="d"
+        Title="Редактировать пиццу" Height="300" Width="400"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <Window.Resources>
+        <converters:IngredientsConverter x:Key="IngredientsConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Label Grid.Row="0" Grid.Column="0" Content="Название:" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="0" Grid.Column="1" Margin="5" Text="{Binding Name}"/>
+
+        <Label Grid.Row="1" Grid.Column="0" Content="Ингредиенты:" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="1" Grid.Column="1" Margin="5" Text="{Binding Ingredients, Converter={StaticResource IngredientsConverter}}" ToolTip="Введите ингредиенты через запятую"/>
+
+        <Label Grid.Row="2" Grid.Column="0" Content="Цена:" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="2" Grid.Column="1" Margin="5" Text="{Binding Price}"/>
+
+        <WrapPanel Grid.Row="4" Grid.ColumnSpan="2" HorizontalAlignment="Right">
+            <Button Content="Сохранить" Width="100" Margin="5" IsDefault="True" Click="SaveButton_Click"/>
+            <Button Content="Отмена" Width="100" Margin="5" IsCancel="True" Click="CancelButton_Click"/>
+        </WrapPanel>
+    </Grid>
+</Window>

@@ -41,18 +41,19 @@ public class RestOverTcpClient
 		return SendRequestAsync<object>("DELETE", path);
 	}
 
-	private async Task<T?> SendRequestAsync<T>(string method, string path, object? bodyContent = null)
+	private async Task<T> SendRequestAsync<T>(string method, string path, object bodyContent = null)
 	{
 		var requestBuilder = new StringBuilder();
 		requestBuilder.AppendLine($"{method} {path}");
 
-		byte[]? bodyBytes = null;
+		byte[] bodyBytes = null;
 		if (bodyContent != null)
 		{
 			var jsonBody = JsonSerializer.Serialize(bodyContent);
 			bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+
 			requestBuilder.AppendLine("Content-Type: application/json");
-			requestBuilder.AppendLine($"Content-Length: {jsonBody.Length}");
+			requestBuilder.AppendLine($"Content-Length: {bodyBytes.Length}");
 		}
 
 		requestBuilder.AppendLine();
@@ -60,13 +61,16 @@ public class RestOverTcpClient
 		using var client = new TcpClient();
 		await client.ConnectAsync(_host, _port);
 		await using var stream = client.GetStream();
-		var headerBytes = Encoding.UTF8.GetBytes(requestBuilder.ToString());
-		await stream.WriteAsync(headerBytes);
 
+		var headerBytes = Encoding.UTF8.GetBytes(requestBuilder.ToString());
+		await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
 		if (bodyBytes != null)
 		{
-			await stream.WriteAsync(bodyBytes);
+			await stream.WriteAsync(bodyBytes, 0, bodyBytes.Length);
 		}
+		await stream.FlushAsync(); 
+
+		client.Client.Shutdown(SocketShutdown.Send);
 
 		using var reader = new StreamReader(stream, Encoding.UTF8);
 		var rawResponse = await reader.ReadToEndAsync();

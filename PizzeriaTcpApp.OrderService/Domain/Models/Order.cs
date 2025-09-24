@@ -6,6 +6,6 @@ public class Order
 	public string CustomerName { get; set; } = string.Empty;
 	public DateTime OrderDate { get; set; }
 	public decimal TotalPrice { get; set; }
-	public string Status { get; set; } // "Received", "Cooking", "Delivered"
+	public string Status { get; set; } 
 	public List<OrderItem> Items { get; set; } = [];
 }

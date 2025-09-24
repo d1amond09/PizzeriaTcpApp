@@ -12,7 +12,6 @@ public class OrderDbContext : DbContext
 
 	protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 	{
-		// Указываем использовать отдельный файл БД для этого микросервиса
 		optionsBuilder.UseSqlite("Data Source=orders.db");
 	}
 

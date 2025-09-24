@@ -1,8 +1,9 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 const int GatewayPort = 8080;
- 
+
 Dictionary<string, (string Host, int Port)> Routes = new()
 {
 	{ "/api/menu", ("127.0.0.1", 9001) },
@@ -23,44 +24,48 @@ foreach (var route in Routes)
 while (true)
 {
 	var client = listener.AcceptTcpClient();
-	_ = Task.Run(() => HandleClient(client));
+	_ = Task.Run(() => HandleProxyConnection(client));
 }
 
-async Task HandleClient(TcpClient client)
+async Task HandleProxyConnection(TcpClient client)
 {
-	Console.WriteLine($"[Gateway] Новое подключение от {client.Client.RemoteEndPoint}");
+	var clientEndPoint = client?.Client?.RemoteEndPoint?.ToString() ?? "unknown client";
+	Console.WriteLine($"[Gateway] New connection from {clientEndPoint}");
+
 	await using var clientStream = client.GetStream();
 
-	using var reader = new StreamReader(clientStream, leaveOpen: true);
+	using var initialData = new MemoryStream();
+	var buffer = new byte[8192];
 
-	var requestLine = await reader.ReadLineAsync();
+	var bytesRead = await clientStream.ReadAsync(buffer, 0, buffer.Length);
+	if (bytesRead == 0)
+	{
+		client.Close();
+		return;
+	}
+	initialData.Write(buffer, 0, bytesRead);
+	initialData.Position = 0;
+
+	string requestLine;
+	using (var reader = new StreamReader(initialData, Encoding.UTF8, leaveOpen: true))
+	{
+		requestLine = await reader.ReadLineAsync();
+	}
+	initialData.Position = 0; 
+
 	if (string.IsNullOrEmpty(requestLine))
 	{
-		Console.WriteLine("[Gateway] Пустой запрос, закрываем соединение.");
 		client.Close();
 		return;
 	}
 
 	var parts = requestLine.Split(' ');
-	var method = parts[0];
-	var fullPath = parts[1];
+	var fullPath = parts.Length > 1 ? parts[1] : "/";
 
-	string targetPrefix = null;
-	(string targetHost, int targetPort) = (null, 0);
-
-	foreach (var route in Routes)
+	var (routePrefix, target) = FindRoute(fullPath);
+	if (target == null)
 	{
-		if (fullPath.StartsWith(route.Key))
-		{
-			targetPrefix = route.Key;
-			(targetHost, targetPort) = route.Value;
-			break;
-		}
-	}
-
-	if (targetHost == null)
-	{
-		await SendErrorResponse(clientStream, "502 Bad Gateway", "Не удалось найти сервис для данного маршрута.");
+		await SendErrorResponse(clientStream, "502 Bad Gateway", "Route not found for the given path.");
 		client.Close();
 		return;
 	}
@@ -69,32 +74,38 @@ async Task HandleClient(TcpClient client)
 	try
 	{
 		serviceClient = new TcpClient();
-		await serviceClient.ConnectAsync(targetHost, targetPort);
+		await serviceClient.ConnectAsync(target.Value.Host, target.Value.Port);
 		await using var serviceStream = serviceClient.GetStream();
 
-		var newPath = fullPath.Substring(targetPrefix.Length);
-		if (string.IsNullOrEmpty(newPath)) newPath = "/";
+		Console.WriteLine($"[Gateway] Proxying {fullPath} to {target.Value.Host}:{target.Value.Port}");
 
-		var newRequestLine = $"{method} {newPath}\r\n";
+		await initialData.CopyToAsync(serviceStream);
 
-		var requestLineBytes = System.Text.Encoding.UTF8.GetBytes(newRequestLine);
-		await serviceStream.WriteAsync(requestLineBytes, 0, requestLineBytes.Length);
+		var clientToServer = clientStream.CopyToAsync(serviceStream);
+		var serverToClient = serviceStream.CopyToAsync(clientStream);
 
-		await clientStream.CopyToAsync(serviceStream);
-
-		await serviceStream.CopyToAsync(clientStream);
+		await Task.WhenAll(clientToServer, serverToClient);
 	}
 	catch (Exception ex)
 	{
-		Console.WriteLine($"[Gateway] Ошибка проксирования: {ex.Message}");
-		await SendErrorResponse(clientStream, "503 Service Unavailable", "Целевой сервис недоступен или произошла ошибка.");
+		Console.WriteLine($"[Gateway] Proxy error: {ex.GetType().Name} - {ex.Message}");
 	}
 	finally
 	{
-		client.Close();
+		client?.Close();
 		serviceClient?.Close();
-		Console.WriteLine($"[Gateway] Соединение с {client.Client.RemoteEndPoint} закрыто.");
+		Console.WriteLine($"[Gateway] Connection from {clientEndPoint} closed.");
 	}
+}
+
+(string, (string Host, int Port)?) FindRoute(string path)
+{
+	var bestMatch = Routes.Keys
+		.Where(path.StartsWith)
+		.OrderByDescending(k => k.Length)
+		.FirstOrDefault();
+
+	return bestMatch != null ? (bestMatch, Routes[bestMatch]) : (null, null);
 }
 
 async Task SendErrorResponse(Stream stream, string status, string message)

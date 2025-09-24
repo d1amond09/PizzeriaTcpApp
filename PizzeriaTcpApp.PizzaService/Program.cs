@@ -10,6 +10,6 @@ Console.WriteLine("Используется PizzaService для управлен
 while (true)
 {
 	var client = listener.AcceptTcpClient();
-	await Task.Run(() => ServerHelper.HandleClient(client));
+	await ServerHelper.HandleClient(client);
 }
 

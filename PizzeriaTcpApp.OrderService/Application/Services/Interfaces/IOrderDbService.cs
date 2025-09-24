@@ -6,4 +6,7 @@ internal interface IOrderDbService
 {
 	Order CreateOrder(Order newOrder);
 	IEnumerable<Order> GetAllOrders();
+	Order? GetOrderById(Guid id);
+	Order UpdateOrder(Guid id, Order updatedOrder);
+	bool DeleteOrder(Guid id);
 }

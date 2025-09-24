@@ -1,3 +1,11 @@
 ﻿namespace PizzeriaTcpApp.Shared.Contracts;
 
-public record OrderItemDto(Guid Id, Guid OrderId, Guid PizzaId, string PizzaName, int Quantity, decimal PriceAtTimeOfOrder);
+public class OrderItemDto
+{
+	public Guid Id { get; set; }
+	public Guid OrderId { get; set; }
+	public Guid PizzaId { get; set; }
+	public string PizzaName { get; set; }
+	public int Quantity { get; set; }
+	public decimal PriceAtTimeOfOrder { get; set; }
+}
