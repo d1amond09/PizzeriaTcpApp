@@ -26,7 +26,7 @@ public class RestOverTcpClient
 		return SendRequestAsync<T>("GET", path);
 	}
 
-	public Task<T?> PostAsync<T>(string path, T body)
+	public Task<T?> PostAsync<T>(string path, object body)
 	{
 		return SendRequestAsync<T>("POST", path, body);
 	}

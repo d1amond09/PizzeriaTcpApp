@@ -36,7 +36,7 @@ namespace PizzeriaTcpApp.PizzaService.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Pizzas");
+                    b.ToTable("Pizzas", (string)null);
                 });
 #pragma warning restore 612, 618
         }

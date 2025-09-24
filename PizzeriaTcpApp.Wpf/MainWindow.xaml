@@ -5,54 +5,94 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PizzeriaTcpApp.Wpf"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid Margin="15">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="2*"/>
-        </Grid.ColumnDefinitions>
-
-        <DockPanel Grid.Column="0">
-            <Label Content="Меню пиццерии" DockPanel.Dock="Top" FontWeight="Bold"/>
-            <Button Content="Обновить список" DockPanel.Dock="Bottom" Click="RefreshButton_Click" Margin="0,10,0,0"/>
-            <ListBox x:Name="PizzasListBox" 
-                     SelectionChanged="PizzasListBox_SelectionChanged" 
-                     DisplayMemberPath="Name"/>
-        </DockPanel>
-
-        <Border Grid.Column="1" Margin="20,0,0,0" BorderBrush="Gainsboro" BorderThickness="1" Padding="10">
-            <StackPanel x:Name="DetailsPanel" IsEnabled="False">
-                <Label Content="Детали пиццы" FontWeight="Bold"/>
-
-                <Label Content="ID"/>
-                <TextBox x:Name="IdTextBox" IsReadOnly="True" Background="#eee"/>
-
-                <Label Content="Название"/>
-                <TextBox x:Name="NameTextBox"/>
-
-                <Label Content="Ингредиенты"/>
-                <ListBox x:Name="IngredientsListBox" Height="100" Margin="0,0,0,5"/>
-                <Grid>
+        Title="Клиент Пиццерии (Микросервисы)" Height="600" Width="900" WindowStartupLocation="CenterScreen">
+    <Grid Margin="10">
+        <TabControl>
+            <!-- ВКЛАДКА 1: СДЕЛАТЬ ЗАКАЗ -->
+            <TabItem Header="Сделать заказ">
+                <Grid Margin="5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="NewIngredientTextBox" Grid.Column="0" VerticalContentAlignment="Center"/>
-                    <Button x:Name="AddIngredientButton" Grid.Column="1" Content="Добавить" Margin="5,0,0,0" Click="AddIngredientButton_Click"/>
-                    <Button x:Name="RemoveIngredientButton" Grid.Column="2" Content="Удалить" Margin="5,0,0,0" Click="RemoveIngredientButton_Click"/>
+
+                    <!-- Левая панель: Меню и добавление в корзину -->
+                    <DockPanel Grid.Column="0">
+                        <Label DockPanel.Dock="Top" Content="Выберите пиццу:" FontWeight="Bold"/>
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Label Content="Кол-во:"/>
+                            <TextBox x:Name="QuantityTextBox" Width="40" Text="1" VerticalContentAlignment="Center"/>
+                            <Button x:Name="AddToOrderButton" Content="Добавить в заказ" Margin="10,0,0,0" Padding="5" Click="AddToOrderButton_Click"/>
+                        </StackPanel>
+                        <ListBox x:Name="MenuForOrderListBox" DisplayMemberPath="Name"/>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="2" HorizontalAlignment="Stretch" Background="Gainsboro"/>
+
+                    <!-- Правая панель: Корзина и оформление -->
+                    <DockPanel Grid.Column="2" Margin="5,0,0,0">
+                        <Label DockPanel.Dock="Top" Content="Ваш заказ:" FontWeight="Bold"/>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition/>
+                                </Grid.ColumnDefinitions>
+                                <Label Content="Имя клиента:" FontWeight="SemiBold"/>
+                                <TextBox x:Name="CustomerNameTextBox" Grid.Column="1"/>
+                            </Grid>
+                            <TextBlock x:Name="TotalPriceTextBlock" Text="Итого: 0.00 руб." FontSize="16" FontWeight="Bold" Margin="0,10,0,10" HorizontalAlignment="Right"/>
+                            <Button x:Name="PlaceOrderButton" Content="Оформить заказ" Padding="10,5" HorizontalAlignment="Stretch" Background="LightGreen" Click="PlaceOrderButton_Click"/>
+                        </StackPanel>
+                        <ListView x:Name="CartListView">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Название" Width="180" DisplayMemberBinding="{Binding PizzaName}"/>
+                                    <GridViewColumn Header="Кол-во" Width="50" DisplayMemberBinding="{Binding Quantity}"/>
+                                    <GridViewColumn Header="Цена" Width="80" DisplayMemberBinding="{Binding Price, StringFormat={}{0:F2}}"/>
+                                    <GridViewColumn Header="Сумма" Width="80" DisplayMemberBinding="{Binding SubTotal, StringFormat={}{0:F2}}"/>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </DockPanel>
                 </Grid>
+            </TabItem>
 
-                <Label Content="Цена"/>
-                <TextBox x:Name="PriceTextBox"/>
+            <!-- ВКЛАДКА 2: МЕНЮ -->
+            <TabItem Header="Меню">
+                <Grid Margin="5">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Top" Content="Обновить меню" Margin="5" HorizontalAlignment="Left" Click="RefreshMenuButton_Click"/>
+                        <DataGrid x:Name="MenuDataGrid" AutoGenerateColumns="False" IsReadOnly="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50"/>
+                                <DataGridTextColumn Header="Название" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="Ингредиенты" Binding="{Binding Ingredients}" Width="3*"/>
+                                <DataGridTextColumn Header="Цена" Binding="{Binding Price, StringFormat={}{0:F2} руб.}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
 
-                <WrapPanel Margin="0,25,0,0" HorizontalAlignment="Right">
-                    <Button Content="Добавить новую" Click="AddButton_Click" Width="120" Margin="5"/>
-                    <Button Content="Сохранить изменения" Click="UpdateButton_Click" Width="140" Margin="5"/>
-                    <Button Content="Удалить" Click="DeleteButton_Click" Width="80" Margin="5" Background="#FFE08282"/>
-                    <Button Content="Очистить" Click="ClearButton_Click" Width="80" Margin="5"/>
-                </WrapPanel>
-            </StackPanel>
-        </Border>
+            <!-- ВКЛАДКА 3: ОТЧЕТЫ -->
+            <TabItem Header="Отчеты">
+                <DockPanel Margin="5">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                        <Label Content="Выберите отчет:"/>
+                        <ComboBox x:Name="ReportsComboBox" Width="250" SelectionChanged="ReportsComboBox_SelectionChanged"/>
+                        <StackPanel x:Name="DateRangePanel" Orientation="Horizontal" Visibility="Collapsed" Margin="10,0,0,0">
+                            <Label Content="С:"/>
+                            <DatePicker x:Name="FromDatePicker"/>
+                            <Label Content="По:"/>
+                            <DatePicker x:Name="ToDatePicker"/>
+                        </StackPanel>
+                        <Button Content="Сформировать" Margin="10,0,0,0" Click="GenerateReportButton_Click"/>
+                    </StackPanel>
+                    <TextBox x:Name="ReportResultsTextBox" Margin="5" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsReadOnly="True" FontFamily="Consolas"/>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

@@ -124,6 +124,7 @@ public class ServerHelper
 
 	public static string CreateResponse<T>(string status, T body)
 	{
+		var jsonOptions = new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles };
 		var jsonBody = JsonSerializer.Serialize(body);
 		return $"{status}\r\nContent-Type: application/json\r\n\r\n{jsonBody}";
 	}

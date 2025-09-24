@@ -1,14 +1,23 @@
-﻿using System.Windows;
+﻿using System.Collections.ObjectModel;
+using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
+using PizzeriaTcpApp.Shared.Contracts;
 using PizzeriaTcpApp.Wpf.Models;
+using PizzeriaTcpApp.Wpf.ViewModels;
 using TcpRestNetworking;
 
 namespace PizzeriaTcpApp.Wpf;
 
 public partial class MainWindow : Window
 {
-	private readonly RestOverTcpClient _client = new ("127.0.0.1", 8888);
-	private Pizza? _selectedPizza;
+	// === ВАЖНО: Клиент подключается только к API Gateway! ===
+	private readonly RestOverTcpClient _client = new RestOverTcpClient("127.0.0.1", 8080);
+
+	// Коллекции для привязки к UI
+	private ObservableCollection<Pizza> _menu = new ObservableCollection<Pizza>();
+	private ObservableCollection<OrderItemViewModel> _cart = new ObservableCollection<OrderItemViewModel>();
+	private Dictionary<string, string> _availableReports = new Dictionary<string, string>();
 
 	public MainWindow()
 	{
@@ -18,205 +27,172 @@ public partial class MainWindow : Window
 
 	private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
 	{
-		await LoadPizzasAsync();
+		// Привязываем источники данных
+		MenuForOrderListBox.ItemsSource = _menu;
+		MenuDataGrid.ItemsSource = _menu;
+		CartListView.ItemsSource = _cart;
+
+		SetupReports();
+
+		// Загружаем меню при старте
+		await LoadMenuAsync();
 	}
 
-	private void PizzasListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		_selectedPizza = PizzasListBox.SelectedItem as Pizza;
-		PopulateDetails();
-	}
-
-	#region CRUD Operations
-
-	private async void AddButton_Click(object sender, RoutedEventArgs e)
+	private async Task LoadMenuAsync()
 	{
 		try
 		{
-			if (!ValidateInput()) return;
-
-			var newPizza = new Pizza();
-			MapFormToPizza(newPizza);
-
-			await _client.PostAsync("/pizzas", newPizza);
-			MessageBox.Show("Новая пицца успешно добавлена!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-
-			ClearForm();
-			await LoadPizzasAsync();
+			var pizzas = await _client.GetAsync<List<Pizza>>("/api/menu/pizzas");
+			_menu.Clear();
+			foreach (var pizza in pizzas)
+			{
+				_menu.Add(pizza);
+			}
 		}
 		catch (Exception ex)
 		{
-			ShowError($"Ошибка при добавлении: {ex.Message}");
+			MessageBox.Show($"Не удалось загрузить меню: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
 		}
 	}
 
-	private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+	private void RefreshMenuButton_Click(object sender, RoutedEventArgs e)
 	{
-		if (_selectedPizza == null)
+		LoadMenuAsync();
+	}
+
+	#region Order Logic
+
+	private void AddToOrderButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (MenuForOrderListBox.SelectedItem is not Pizza selectedPizza)
 		{
-			MessageBox.Show("Сначала выберите пиццу для обновления.", "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
+			MessageBox.Show("Пожалуйста, выберите пиццу из списка.", "Внимание");
 			return;
 		}
 
-		try
+		if (!int.TryParse(QuantityTextBox.Text, out int quantity) || quantity <= 0)
 		{
-			if (!ValidateInput()) return;
-
-			MapFormToPizza(_selectedPizza);
-			await _client.PutAsync($"/pizzas/{_selectedPizza.Id}", _selectedPizza);
-			MessageBox.Show("Данные пиццы успешно обновлены!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-
-			await LoadPizzasAsync();
-		}
-		catch (Exception ex)
-		{
-			ShowError($"Ошибка при обновлении: {ex.Message}");
-		}
-	}
-
-	private async void DeleteButton_Click(object sender, RoutedEventArgs e)
-	{
-		if (_selectedPizza == null)
-		{
-			MessageBox.Show("Сначала выберите пиццу для удаления.", "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
+			MessageBox.Show("Пожалуйста, введите корректное количество (целое число больше 0).", "Ошибка ввода");
 			return;
 		}
 
-		var result = MessageBox.Show($"Вы уверены, что хотите удалить '{_selectedPizza.Name}'?",
-			"Подтверждение удаления", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
-		if (result == MessageBoxResult.Yes)
+		// Проверяем, есть ли уже такая пицца в корзине
+		var existingItem = _cart.FirstOrDefault(item => item.PizzaId == selectedPizza.Id);
+		if (existingItem != null)
 		{
-			try
-			{
-				await _client.DeleteAsync($"/pizzas/{_selectedPizza.Id}");
-				MessageBox.Show("Пицца успешно удалена.", "Успех");
-
-				await LoadPizzasAsync();
-				ClearForm();
-			}
-			catch (Exception ex)
-			{
-				ShowError($"Ошибка при удалении: {ex.Message}");
-			}
-		}
-	}
-
-	#endregion
-
-	#region Ingredient Management
-
-	private void AddIngredientButton_Click(object sender, RoutedEventArgs e)
-	{
-		var newIngredient = NewIngredientTextBox.Text.Trim();
-		if (!string.IsNullOrEmpty(newIngredient))
-		{
-			var ingredients = (IngredientsListBox.ItemsSource as IEnumerable<string> ?? []).ToList();
-			ingredients.Add(newIngredient);
-			IngredientsListBox.ItemsSource = ingredients;
-			NewIngredientTextBox.Clear();
-		}
-	}
-
-	private void RemoveIngredientButton_Click(object sender, RoutedEventArgs e)
-	{
-		if (IngredientsListBox.SelectedItem is string selectedIngredient)
-		{
-			var ingredients = (IngredientsListBox.ItemsSource as IEnumerable<string>).ToList();
-			ingredients.Remove(selectedIngredient);
-			IngredientsListBox.ItemsSource = ingredients;
-		}
-	}
-
-	#endregion
-
-	#region UI Helper Methods
-
-	private async Task LoadPizzasAsync()
-	{
-		try
-		{
-			var pizzas = await _client.GetAsync<IEnumerable<Pizza>>("/pizzas");
-			var selectedId = _selectedPizza?.Id;
-			PizzasListBox.ItemsSource = pizzas;
-
-			if (selectedId != null)
-			{
-				PizzasListBox.SelectedItem = pizzas?.FirstOrDefault(p => p.Id == selectedId);
-			}
-		}
-		catch (Exception ex)
-		{
-			ShowError($"Не удалось загрузить список пицц. Убедитесь, что сервер запущен.\n\nОшибка: {ex.Message}");
-		}
-	}
-
-	private void PopulateDetails()
-	{
-		if (_selectedPizza != null)
-		{
-			DetailsPanel.IsEnabled = true;
-			IdTextBox.Text = _selectedPizza.Id.ToString();
-			NameTextBox.Text = _selectedPizza.Name;
-			PriceTextBox.Text = _selectedPizza.Price.ToString("F2");
-			IngredientsListBox.ItemsSource = new List<string>(_selectedPizza.Ingredients);
+			// Если есть - просто увеличиваем количество
+			existingItem.Quantity += quantity;
 		}
 		else
 		{
-			ClearForm();
+			// Если нет - добавляем новую позицию
+			_cart.Add(new OrderItemViewModel
+			{
+				PizzaId = selectedPizza.Id,
+				PizzaName = selectedPizza.Name,
+				Price = selectedPizza.Price,
+				Quantity = quantity
+			});
 		}
+
+		UpdateTotalPrice();
 	}
 
-	private void MapFormToPizza(Pizza pizza)
+	private void UpdateTotalPrice()
 	{
-		pizza.Name = NameTextBox.Text;
-		pizza.Price = decimal.Parse(PriceTextBox.Text);
-		pizza.Ingredients = [.. (IngredientsListBox.ItemsSource as IEnumerable<string> ?? [])];
+		decimal total = _cart.Sum(item => item.SubTotal);
+		TotalPriceTextBlock.Text = $"Итого: {total:F2} руб.";
 	}
 
-	private void ClearForm()
+	private async void PlaceOrderButton_Click(object sender, RoutedEventArgs e)
 	{
-		_selectedPizza = null;
-		PizzasListBox.SelectedItem = null;
-		IdTextBox.Clear();
-		NameTextBox.Clear();
-		PriceTextBox.Clear();
-		IngredientsListBox.ItemsSource = null;
-		NewIngredientTextBox.Clear();
-		DetailsPanel.IsEnabled = false;
-	}
-
-	private bool ValidateInput()
-	{
-		if (string.IsNullOrWhiteSpace(NameTextBox.Text))
+		if (string.IsNullOrWhiteSpace(CustomerNameTextBox.Text))
 		{
-			MessageBox.Show("Поле 'Название' не может быть пустым.", "Ошибка валидации", MessageBoxButton.OK, MessageBoxImage.Error);
-			return false;
+			MessageBox.Show("Пожалуйста, введите имя клиента.", "Ошибка");
+			return;
 		}
-		if (!decimal.TryParse(PriceTextBox.Text, out _))
+		if (!_cart.Any())
 		{
-			MessageBox.Show("Поле 'Цена' должно быть числом.", "Ошибка валидации", MessageBoxButton.OK, MessageBoxImage.Error);
-			return false;
+			MessageBox.Show("Ваша корзина пуста.", "Ошибка");
+			return;
 		}
-		return true;
+
+		var request = new CreateOrderRequest
+		{
+			CustomerName = CustomerNameTextBox.Text,
+			Items = _cart.Select(item => item.ToDto()).ToList()
+		};
+
+		try
+		{
+			var createdOrder = await _client.PostAsync<OrderDto>("/api/orders", request);
+			MessageBox.Show($"Заказ №{createdOrder.Id} успешно создан!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+
+			// Очистка формы
+			_cart.Clear();
+			CustomerNameTextBox.Clear();
+			UpdateTotalPrice();
+		}
+		catch (Exception ex)
+		{
+			MessageBox.Show($"Не удалось создать заказ: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+		}
 	}
 
-	private void ShowError(string message)
+	#endregion
+
+	#region Reports Logic
+
+	private void SetupReports()
 	{
-		MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+		_availableReports.Add("Самая популярная пицца", "/api/reports/most-popular-pizza");
+		_availableReports.Add("Самая прибыльная пицца", "/api/reports/most-profitable-pizza");
+		_availableReports.Add("Средний чек", "/api/reports/average-order-value");
+		_availableReports.Add("Заказы по статусам", "/api/reports/orders-by-status");
+		_availableReports.Add("Общая выручка за период", "/api/reports/total-revenue");
+
+		ReportsComboBox.ItemsSource = _availableReports.Keys;
+		ReportsComboBox.SelectedIndex = 0;
 	}
 
-	private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+	private void ReportsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
 	{
-		await LoadPizzasAsync();
+		var selectedReport = ReportsComboBox.SelectedItem as string;
+		// Показываем/скрываем выбор даты для соответствующего отчета
+		DateRangePanel.Visibility = selectedReport == "Общая выручка за период" ? Visibility.Visible : Visibility.Collapsed;
 	}
 
-	private void ClearButton_Click(object sender, RoutedEventArgs e)
+	private async void GenerateReportButton_Click(object sender, RoutedEventArgs e)
 	{
-		PizzasListBox.SelectedItem = null;
+		if (ReportsComboBox.SelectedItem is not string selectedReportKey) return;
 
-		DetailsPanel.IsEnabled = true;
-		IdTextBox.Text = "(новый)"; 
+		var path = _availableReports[selectedReportKey];
+
+		// Если отчет требует диапазон дат, добавляем его в запрос
+		if (selectedReportKey == "Общая выручка за период")
+		{
+			if (FromDatePicker.SelectedDate == null || ToDatePicker.SelectedDate == null)
+			{
+				MessageBox.Show("Пожалуйста, выберите начальную и конечную дату.", "Ошибка");
+				return;
+			}
+			path += $"?from={FromDatePicker.SelectedDate:yyyy-MM-dd}&to={ToDatePicker.SelectedDate:yyyy-MM-dd}";
+		}
+
+		ReportResultsTextBox.Text = "Загрузка...";
+		try
+		{
+			// Используем JsonElement, так как структура ответа может быть разной
+			var result = await _client.GetAsync<JsonElement>(path);
+
+			// Красиво форматируем JSON для вывода
+			var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+			ReportResultsTextBox.Text = JsonSerializer.Serialize(result, jsonOptions);
+		}
+		catch (Exception ex)
+		{
+			ReportResultsTextBox.Text = $"Ошибка при формировании отчета:\n{ex.Message}";
+		}
 	}
 
 	#endregion
